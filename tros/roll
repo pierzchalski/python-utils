@@ -3,49 +3,96 @@
 import random
 import argparse
 
-def roll_d10_stacking():
-  roll = random.randint(1, 10)
-  if roll == 10:
-      roll += roll_d10_stacking()
-  return roll
+def p_le(tn):
+    # can't roll less than 1
+    if tn < 1:
+        return 0.0
+    # can't roll a multiple of 10, so rolling 10*k or less is the same as rolling
+    # less than 10*k
+    if tn % 10 == 0:
+        return p_lt(tn)
+    # derivation:
+    #   say d = 10 * t + i, where 0 < i < 10 (we assume d is not a multiple
+    #   of 10). To roll d, we need to get t 10's, then a single i,
+    #   so P(roll = d) is ((1/10) ** t) * (1/10) == (1/10) ** (t + 1).
+    #   
+    #   We also have
+    #     P(0 < roll < 10) = 0.9 (need to roll exactly zero 10's)
+    #     P(10 < roll < 20) = 0.09 (need to roll exactly one 10)
+    #     ...etc.
+    #
+    #   So 
+    #     P(roll <= d) = P(0 < roll < 10)
+    #                    + P(10 < roll < 20) 
+    #                    + ...
+    #                    + P(10 * t < roll <= 10 * t + i)
+    #                  = 9 * (1/10)
+    #                    + 9 * ((1/10) ** 2)
+    #                    + ... 
+    #                    + 9 * ((1/10) ** t)
+    #                    + i * ((1/10) ** (t + 1))
+    #   Using geometric sums:
+    #     P(roll <= d) = (9/10) * ( 1 - ((1/10) ** t) )
+    #                             (-------------------)
+    #                             (     1 - (1/10)    )
+    #                    + i * ((1/10) ** (t + 1))
+    #                  = 1 + (i - 10) * ((1/10) ** (t + 1))
+    return 1 + ((tn % 10) - 10) * (0.1 ** ((tn // 10) + 1))
+
+def p_lt(tn):
+    return p_le(tn - 1)
+
+def p_eq(tn):
+    return p_le(tn) - p_lt(tn)
+
+def p_botch(lvl, tn):
+    # can't botch if you can't fail.
+    if tn == 1:
+        return 0.0
+    # can't botch if you can't roll two 1's.
+    if lvl <= 1:
+        return 0.0
+    p = p_eq(1)
+    p_2_1s = 1 + (p - 1 - lvl * p) * ((1 - p) ** (lvl - 1))
+    p_fail = p_le(tn) ** (lvl)
+    return p_2_1s * p_fail
+
+def roll_stack():
+    roll = random.randint(1, 10)
+    if roll == 10:
+        return roll + roll_stack()
+    return roll
 
 def attr_subcommand(args):
-    samples = ([roll_d10_stacking() for i in range(0, args.lvl)] for i in range(0, args.samples))
-
-    successes = [0 for i in range(0, args.lvl + 1)]
-    fumbles = 0
-
-    def num_successes(rolls):
-        return sum([1 if roll >= args.tn else 0 for roll in rolls])
-
-    def is_fumble(rolls):
-        if num_successes(rolls) > 0:
-            return False
-        return sum([1 if roll == 1 else 0 for roll in rolls]) >= 2
-
-    for rolls in samples:
-        successes[num_successes(rolls)] += 1
-        fumbles += 1 if is_fumble(rolls) else 0
-
-    print('P(fumble): {:7.3f}%'.format(float(fumbles * 100) / args.samples))
-    accum = 0
-    for i in range(0, args.lvl + 1):
-        print('P(=={:2}): {:7.3f}%, P(>={:2}): {:7.3f}%'.format(\
-                i, float(successes[i] * 100) / args.samples, 
-                i, 100 - float(accum * 100) / args.samples))
-        accum += successes[i]
-
-default_num_samples = 10**5
+    n_samples = 10**5
+    samples = ([roll_stack() for i in range(0, args.lvl)] \
+        for s in range(0, n_samples))
+    def is_botch(rolls):
+        return \
+            (not sum([1 if roll >= args.tn else 0 for roll in rolls]) > 0) and \
+            sum([1 if roll == 1 else 0 for roll in rolls]) >= 2
+    emp_p_botch = float(sum((1 if is_botch(rolls) else 0 for rolls in samples)))\
+        / n_samples
+    print('theory: {:2.3f}, practice: {:2.3f}'.format(\
+        p_botch(args.lvl, args.tn),
+        emp_p_botch))
+def no_subcommand(parser):
+    def magic(args):
+        parser.parse_args(['-h'])
+    return magic
 
 def main():
-    parser = argparse.ArgumentParser(description='Dice roll utilities for The Riddle of Steel')
+    parser = argparse.ArgumentParser(\
+        description='Dice roll utilities for The Riddle of Steel')
+    parser.set_defaults(func=no_subcommand(parser))
     subparsers = parser.add_subparsers()
 
-    attr_parser = subparsers.add_parser('attr', help='analyse attribute tests')
-    attr_parser.add_argument('lvl', type=int, help='the level of the attribute (number of dice rolled)')
-    attr_parser.add_argument('tn', type=int, help='target number to roll against')
-    attr_parser.add_argument('--samples', type=int, default=default_num_samples, \
-            help='number of samples to take, defaults to {}.'.format(default_num_samples))
+    attr_parser = subparsers.add_parser('attr', \
+        help='analyse attribute tests')
+    attr_parser.add_argument('lvl', type=int, \
+        help='the level of the attribute (number of dice rolled)')
+    attr_parser.add_argument('tn', type=int, \
+        help='target number to roll against')
     attr_parser.set_defaults(func=attr_subcommand)
 
     args = parser.parse_args()
