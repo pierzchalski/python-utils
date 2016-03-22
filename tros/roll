@@ -1,4 +1,56 @@
 #! /usr/bin/python3
 
+import random
+import argparse
 
-print("hello, world!")
+def roll_d10_stacking():
+  roll = random.randint(1, 10)
+  if roll == 10:
+      roll += roll_d10_stacking()
+  return roll
+
+def attr_subcommand(args):
+    samples = ([roll_d10_stacking() for i in range(0, args.lvl)] for i in range(0, args.samples))
+
+    successes = [0 for i in range(0, args.lvl + 1)]
+    fumbles = 0
+
+    def num_successes(rolls):
+        return sum([1 if roll >= args.tn else 0 for roll in rolls])
+
+    def is_fumble(rolls):
+        if num_successes(rolls) > 0:
+            return False
+        return sum([1 if roll == 1 else 0 for roll in rolls]) >= 2
+
+    for rolls in samples:
+        successes[num_successes(rolls)] += 1
+        fumbles += 1 if is_fumble(rolls) else 0
+
+    print('P(fumble): {:7.3f}%'.format(float(fumbles * 100) / args.samples))
+    accum = 0
+    for i in range(0, args.lvl + 1):
+        print('P(=={:2}): {:7.3f}%, P(>={:2}): {:7.3f}%'.format(\
+                i, float(successes[i] * 100) / args.samples, 
+                i, 100 - float(accum * 100) / args.samples))
+        accum += successes[i]
+
+default_num_samples = 10**5
+
+def main():
+    parser = argparse.ArgumentParser(description='Dice roll utilities for The Riddle of Steel')
+    subparsers = parser.add_subparsers()
+
+    attr_parser = subparsers.add_parser('attr', help='analyse attribute tests')
+    attr_parser.add_argument('lvl', type=int, help='the level of the attribute (number of dice rolled)')
+    attr_parser.add_argument('tn', type=int, help='target number to roll against')
+    attr_parser.add_argument('--samples', type=int, default=default_num_samples, \
+            help='number of samples to take, defaults to {}.'.format(default_num_samples))
+    attr_parser.set_defaults(func=attr_subcommand)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == '__main__':
+    main()
