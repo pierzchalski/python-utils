@@ -90,7 +90,7 @@ def roll_stack():
     return roll
 
 def attr_subcommand(args):
-    print('P(botch): {:2.5f}'.format(p_botch(args.lvl, args.tn)))
+    print('P(botch): {:2.3f}'.format(p_botch(args.lvl, args.tn)))
     #n_samples = 10**6
     #samples = ([roll_stack() for i in range(0, args.lvl)] \
     #    for j in range(0, n_samples))
