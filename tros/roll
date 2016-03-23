@@ -100,6 +100,7 @@ def attr_subcommand(args):
     #for sample in samples:
     #    s_counts[successes(sample)] += 1
     p_accum = 0.0
+    print('Probability of degrees of success:')
     for i in range(0, args.lvl + 1):
         p = p_roll_eq(args.lvl, args.tn, i)
         print('P(=={:2d}): {:2.3f}, P(>={:2d}): {:2.3f}'.format(\
