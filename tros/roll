@@ -80,6 +80,9 @@ def p_roll_eq(lvl, tn, s):
     # can't get more successes than rolls
     if s > lvl:
         return 0.0
+    # can't get negative successes
+    if s < 0:
+        return 0.0
     count = math.factorial(lvl) // \
         (math.factorial(s) * math.factorial(lvl - s))
     return count * (p_ge(tn) ** s) * (p_interval(1, tn) ** (lvl - s))
@@ -108,6 +111,33 @@ def p_roll_ge(lvl, tn, s):
 
 def p_roll_gt(lvl, tn, s):
     return 1 - p_roll_le(lvl, tn, s)
+
+# probability that (number of successes of lvl1/tn1) minus
+# (number of successes of lvl2/tn2) equals s
+def p_roll_diff_eq(lvl1, tn1, lvl2, tn2, s):
+    return sum((\
+        p_roll_eq(lvl1, tn1, k) \
+        * p_roll_eq(lvl2, tn2, k - s) \
+        for k in range(0, lvl1)))
+
+def p_roll_diff_le(lvl1, tn1, lvl2, tn2, s):
+    # derivation:
+    #   P(diff <= s)
+    #     = sum(k = 0...lvl1) P(we roll k) * P(diff <= s | we roll k)
+    #     = sum(k = 0...lvl1) P(we roll k) * P(they roll >= k - s)
+    return sum((\
+        p_roll_eq(lvl1, tn1, k) \
+        * p_roll_ge(lvl2, tn2, k - s) \
+        for k in range(0, lvl1)))
+
+def p_roll_diff_lt(lvl1, tn1, lvl2, tn2, s):
+    return p_roll_diff_le(lvl1, tn1, lvl2, tn2, s - 1)
+
+def p_roll_diff_ge(lvl1, tn1, lvl2, tn2, s):
+    return 1 - p_roll_diff_lt(lvl1, tn1, lvl2, tn2, s)
+
+def p_roll_diff_gt(lvl1, tn1, lvl2, tn2, s):
+    return 1 - p_roll_diff_le(lvl1, tn1, lvl2, tn2, s)
 
 def roll_stack():
     roll = random.randint(1, 10)
@@ -142,6 +172,17 @@ def cast_subcommand(args):
     print('Age:  {:2d}, P(botch): {:2.3f}'.format(\
         age, p_botch(age, args.ctn)))
 
+def cont_subcommand(args):
+    print('P(you botch):  {:2.3f}'.format(p_botch(args.your_lvl, args.your_tn)))
+    print('P(they botch): {:2.3f}'.format(p_botch(args.their_lvl, args.their_tn)))
+    print('Probability of margins of success:')
+    for i in range(-args.their_lvl, args.your_lvl + 1):
+        p_eq = p_roll_diff_eq(args.your_lvl, args.your_tn, \
+            args.their_lvl, args.their_tn, i)
+        p_ge = p_roll_diff_ge(args.your_lvl, args.your_tn, \
+            args.their_lvl, args.their_tn, i)
+        print('P(=={:2d}): {:2.3f}, P(>={:2d}): {:2.3f}'.format(\
+            i, p_eq, i, p_ge))
 
 def no_subcommand(parser):
     def magic(args):
@@ -160,7 +201,7 @@ def main():
 '''Calling `roll attr <ndice> <tn>` analyses results of rolling <ndice> d10s
 against a TN of <tn>. For instance, `roll attr 8 5` analyses rolling 8 d10s
 againt a TN of 5. The results include the probability of:
-    - botching the result, `P(fumble)`
+    - botching the result, `P(botch)`
     - getting exactly a number of successes, `P(== n)`
     - getting at least a number of successes, `P(>= n)`
 
@@ -192,6 +233,27 @@ If <t_age> isn't set, the default is equal to <ctn>.
     cast_parser.add_argument('-t', '--target', type=float,
         help='the minimum number of ageing successes required. Defaults to <ctn>.')
     cast_parser.set_defaults(func=cast_subcommand)
+
+    cont_parser = subparsers.add_parser('cont', \
+        help=\
+'''Calling `roll cont <your_dice> <your_tn> <their_dice> <their_tn>` analyses
+the result of a contested roll of <your_dice>/<your_tn> vs
+<their_dice>/<their_tn>. The results include the probability of:
+    - each contestant botching the result, `P(you botch)`,
+      `P(they botch)`
+    - getting exactly a number of net successes your way, `P(== n)`
+    - getting at least a number of net successes your way, `P(>= n)`
+    
+''')
+    cont_parser.add_argument('your_lvl', type=int, \
+        help='your level of the attribute (number of dice rolled)')
+    cont_parser.add_argument('your_tn', type=int, \
+        help='your target number to roll against')
+    cont_parser.add_argument('their_lvl', type=int, \
+        help='their level of the attribute (number of dice rolled)')
+    cont_parser.add_argument('their_tn', type=int, \
+        help='their target number to roll against')
+    cont_parser.set_defaults(func=cont_subcommand)
 
     args = parser.parse_args()
     args.func(args)
